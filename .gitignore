@@ -1,0 +1,7 @@
+.idea
+*.pyc
+*/node_modules/*
+*/dist/*
+*/target/*
+/UI/skuttle/css_source/node_modules/
+
