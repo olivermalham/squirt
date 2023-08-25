@@ -1,29 +1,43 @@
 
 
 # Motion information expected from the FarPI host
-class MotionPacket:
-    # Force vector
-    x: float = 0.0
-    y: float = 0.0
-    z: float = 0.0
+class MotionState:
+    def __init__(self):
+        # Force vector
+        self.x: float = 0.0
+        self.y: float = 0.0
+        self.z: float = 0.0
 
-    # Torque vector
-    pitch: float = 0.0
-    roll: float = 0.0
-    yaw: float = 0.0
+        # Torque vector
+        self.pitch: float = 0.0
+        self.roll: float = 0.0
+        self.yaw: float = 0.0
 
-    # Hold flags
-    pitch_hold: bool = True
-    roll_hold: bool = True
-    yaw_hold: bool = False
+        # Hold flags
+        self.pitch_hold: bool = True
+        self.roll_hold: bool = True
+        self.yaw_hold: bool = False
 
-    # Switches
-    sw1: bool = 0
-    sw2: bool = 0
-    sw3: bool = 0
-    sw4: bool = 0
-    sw5: bool = 0
-    sw6: bool = 0
+        # Switches
+        self.sw1: bool = False
+        self.sw2: bool = False
+        self.sw3: bool = False
+        self.sw4: bool = False
+        self.sw5: bool = False
+        self.sw6: bool = False
+
+        # Measured acceleration
+        self.x_accel: float = 0.0
+        self.y_accel: float = 0.0
+        self.z_accel: float = 0.0
+
+        # Measured orientation
+        self.actual_pitch: float = 0.0
+        self.actual_roll: float = 0.0
+        self.actual_yaw: float = 0.0
+
+        # Static action list
+        self.actions = ["action_motion", ]
 
     def map_to_motors(self):
         # Motors mapped clockwise from top right
@@ -67,8 +81,8 @@ class MotionPacket:
 
 # Create a new motion packet from parameters. Called when a FarPi action is received
 def action_motion(x, y, z, roll, pitch, yaw):
-    print("action_motion x:{} y:{} z:{} roll:{} pitch:{} yaw:{}".format(x, y, z, roll, pitch, yaw))
-    new_motion = MotionPacket()
+    # print("action_motion x:{} y:{} z:{} roll:{} pitch:{} yaw:{}".format(x, y, z, roll, pitch, yaw))
+    new_motion = MotionState()
     new_motion.x = x
     new_motion.y = y
     new_motion.z = z
