@@ -25,7 +25,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
 
-from imu import MPU6050, bytes_toint, MPUException
+from libs.imu import MPU6050, bytes_toint, MPUException
 from vector3d import Vector3d
 
 

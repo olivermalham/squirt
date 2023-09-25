@@ -1,15 +1,10 @@
-from mpu9250 import MPU9250
+import motion
+from libs import ssd1306
 from machine import I2C, Pin
-from fusion import Fusion
 import utime as time
 from servo import Servo, servo2040, ANGULAR
-from PID import PID
-from uresponsivevalue import ResponsiveValue
-import json
-import uselect
-import sys
 
-from motion import action_motion, MotionState
+from motion import MotionState
 
 # ----------------------------------------------------------------------------------------------------------------------
 # NOTES
@@ -34,12 +29,19 @@ from motion import action_motion, MotionState
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# Configure the I2C IMU, sensor fusion
+# Configure peripherals, sensor fusion
 # ----------------------------------------------------------------------------------------------------------------------
 i2c = I2C(0, scl=Pin(21), sda=Pin(20), freq=400000)
-imu = MPU9250(i2c)
-fuse = Fusion()
+# imu = MPU9250(i2c)
+# fuse = Fusion()
+
+display = ssd1306.SSD1306_I2C(128, 32, i2c)
 # ----------------------------------------------------------------------------------------------------------------------
+
+
+# Sleep required to give a chance to program before serial coms start on the same UART
+# time.sleep(5)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Create servos
@@ -71,7 +73,21 @@ command_input = ""
 current_motion = MotionState()
 
 
-time.sleep(5)
+test_data = [
+    [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+    # [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+    # [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+]
+test_loop = 0
+
+display.poweron()
+display.invert(1)
+display.text('Squirt Starting...', 3, 3, 1)
+display.show()
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Main loop
@@ -81,43 +97,44 @@ while True:
     # Check if there is a new motion packet ready
     # If so, set it as the new command
     # If we get a Ctrl-A, then exit the program to allow raw REPL mode
-    if uselect.select([sys.stdin], [], [], 0)[0]:
-        c = sys.stdin.read(1)
-
-        # Ctrl-A code exits immediately to allow reprogramming etc
-        if c == 1:
-            print("Bailing out")
-            exit()
-
-        if c != '\n':
-            command_input = command_input + c
-        else:
-            print("Command: {}".format(command_input))
-
-            # Process command here
-            try:
-                command = json.loads(command_input)
-                print("json.loads {}".format(command))
-                action = command["action"]
-                parameters = command["parameters"]
-                # action_motion(**parameters)
-                target = eval(action)
-                if callable(target):
-                    # Pass the HAL instance down to the component
-                    current_motion = target(**parameters)
-            except:
-                # TODO:Need to do better than this!
-                print("Exception!")
-            # Clear the buffer
-            command_input = ""
-
-            # result = {}
-            # actions = []
-            # for entry in dir():
-            #     if entry.startswith("action_"):
-            #         actions.append(f"{entry}")
-            # result["actions"] = actions
-            # return json.dumps(result)
+    # if uselect.select([sys.stdin], [], [], 0)[0]:
+    #     c = sys.stdin.read(1)
+    #
+    #     # Ctrl-A code exits immediately to allow reprogramming etc
+    #     if c == 1:
+    #         print("Bailing out")
+    #         exit()
+    #
+    #     if c != '\n':
+    #         command_input = command_input + c
+    #     else:
+    #         print("Command: {}".format(command_input))
+    #
+    #         # Process command here
+    #         # TODO: This is a mess. No need for such general purpose code here
+    #         try:
+    #             command = json.loads(command_input)
+    #             # print("json.loads {}".format(command))
+    #             action = command["action"]
+    #             parameters = command["parameters"]
+    #             # action_motion(**parameters)
+    #             target = eval(action)
+    #             if callable(target):
+    #                 # Pass the HAL instance down to the component
+    #                 current_motion = target(**parameters)
+    #         except:
+    #             # TODO:Need to do better than this!
+    #             print("Exception!")
+    #         # Clear the buffer
+    #         command_input = ""
+    #
+    #         # result = {}
+    #         # actions = []
+    #         # for entry in dir():
+    #         #     if entry.startswith("action_"):
+    #         #         actions.append(f"{entry}")
+    #         # result["actions"] = actions
+    #         # return json.dumps(result)
 
     # Refresh outputs at 50Hz to match standard servo PWM frequency
     if time.ticks_diff(time.ticks_ms(), last_update) > update_period:
@@ -125,7 +142,7 @@ while True:
         # TODO
 
         # Get the current orientation vector
-        fuse.update_nomag(imu.accel.xyz, imu.gyro.xyz)
+        # fuse.update_nomag(imu.accel.xyz, imu.gyro.xyz)
 
         # Calculate the difference between the two orientation vectors
         # TODO
@@ -135,15 +152,15 @@ while True:
 
         # Map the translation and torque vector into individual motor powers
         motor_values = current_motion.map_to_motors()
-        print(json.dumps(current_motion.__dict__))
-        print(motor_values)
+        # print(json.dumps(current_motion.__dict__))
+        # print(motor_values)
 
         # Smooth the motor power values
         # TODO
 
         # Output the motor powers to the ESCs
-        # for i in range(len(output)):
-        #     output[i].to_percent(motor_values[i])
+        for i in range(len(output)):
+            output[i].to_percent(motor_values[i])
 
         # Update the digital outputs
         # TODO
@@ -153,4 +170,54 @@ while True:
 
         # Once a second loop
         if count % 50 == 0:
-            pass
+            current_motion = motion.action_motion(*test_data[test_loop])
+            display.fill(0)
+            display.text("test_loop: {}".format(test_loop), 3, 3, 1)
+            display.show()
+            print("Test loop: {} - {} : {}".format(test_loop, test_data[test_loop], motor_values))
+            if count % 500 == 0:
+                # current_motion = motion.action_motion(*[0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+                test_loop = test_loop + 1 if (test_loop < len(test_data) - 1) else 0
+
+
+#
+# from machine import Pin, I2C
+# import ssd1306
+#
+# # using default address 0x3C
+# i2c = I2C(sda=Pin(4), scl=Pin(5))
+# display = ssd1306.SSD1306_I2C(128, 64, i2c)
+#
+# display.text('Hello, World!', 0, 0, 1)
+# display.show()
+#
+# # Basic functions:
+#
+# display.poweroff()     # power off the display, pixels persist in memory
+# display.poweron()      # power on the display, pixels redrawn
+# display.contrast(0)    # dim
+# display.contrast(255)  # bright
+# display.invert(1)      # display inverted
+# display.invert(0)      # display normal
+# display.rotate(True)   # rotate 180 degrees
+# display.rotate(False)  # rotate 0 degrees
+# display.show()         # write the contents of the FrameBuffer to display memory
+#
+# # Subclassing FrameBuffer provides support for graphics primitives:
+# display.fill(0)                         # fill entire screen with colour=0
+# display.pixel(0, 10)                    # get pixel at x=0, y=10
+# display.pixel(0, 10, 1)                 # set pixel at x=0, y=10 to colour=1
+# display.hline(0, 8, 4, 1)               # draw horizontal line x=0, y=8, width=4, colour=1
+# display.vline(0, 8, 4, 1)               # draw vertical line x=0, y=8, height=4, colour=1
+# display.line(0, 0, 127, 63, 1)          # draw a line from 0,0 to 127,63
+# display.rect(10, 10, 107, 43, 1)        # draw a rectangle outline 10,10 to 117,53, colour=1
+# display.fill_rect(10, 10, 107, 43, 1)   # draw a solid rectangle 10,10 to 117,53, colour=1
+# display.text('Hello World', 0, 0, 1)    # draw some text at x=0, y=0, colour=1
+# display.scroll(20, 0)                   # scroll 20 pixels to the right
+#
+# # draw another FrameBuffer on top of the current one at the given coordinates
+# import framebuf
+# fbuf = framebuf.FrameBuffer(bytearray(8 * 8 * 1), 8, 8, framebuf.MONO_VLSB)
+# fbuf.line(0, 0, 7, 7, 1)
+# display.blit(fbuf, 10, 10, 0)           # draw on top at x=10, y=10, key=0
+# display.show()

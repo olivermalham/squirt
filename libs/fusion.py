@@ -22,7 +22,7 @@ except ImportError:
     import time
 
 from math import sqrt, atan2, asin, degrees, radians
-from deltat import DeltaT
+from libs.deltat import DeltaT
 
 class Fusion(object):
     '''

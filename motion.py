@@ -41,19 +41,20 @@ class MotionState:
 
     def map_to_motors(self):
         # Motors mapped clockwise from top right
+        # Force and torque values expected in the range -1.0 - 1.0
 
         # Horizontal thrusters - assumes all point forwards
         # Motor 1 - horizontal top right
         motor1 = ((1.0 * self.x) + (-1.0 * self.y) + (0.0 * self.z)
-                  + (0.0 * self.pitch) + (0.0 * self.roll) + (1.0 * self.yaw))
+                  + (0.0 * self.pitch) + (0.0 * self.roll) + (-1.0 * self.yaw)) * -1.0
 
         # Motor 4 - horizontal bottom right
-        motor4 = ((1.0 * self.x) + (-1.0 * self.y) + (0.0 * self.z)
-                  + (0.0 * self.pitch) + (0.0 * self.roll) + (-1.0 * self.yaw))
+        motor4 = ((1.0 * self.x) + (1.0 * self.y) + (0.0 * self.z)
+                  + (0.0 * self.pitch) + (0.0 * self.roll) + (-1.0 * self.yaw)) * -1.0
 
         # Motor 5 - horizontal bottom left
-        motor5 = ((1.0 * self.x) + (1.0 * self.y) + (0.0 * self.z)
-                  + (0.0 * self.pitch) + (0.0 * self.roll) + (-1.0 * self.yaw))
+        motor5 = ((1.0 * self.x) + (-1.0 * self.y) + (0.0 * self.z)
+                  + (0.0 * self.pitch) + (0.0 * self.roll) + (1.0 * self.yaw))
 
         # Motor 8 - horizontal top left
         motor8 = ((1.0 * self.x) + (1.0 * self.y) + (0.0 * self.z)
@@ -76,12 +77,22 @@ class MotionState:
         motor7 = ((0.0 * self.x) + (0.0 * self.y) + (1.0 * self.z)
                   + (1.0 * self.pitch) + (-1.0 * self.roll) + (0.0 * self.yaw))
 
-        return [motor1, motor2, motor3, motor4, motor5, motor6, motor7, motor8]
+        # Map the motor values to values the hardware understands
+        # For servos, this is 0.0 - 1.0, with 0.5 being neutral
+
+        return [motor1 * 0.5 + 0.5,
+                motor2 * 0.5 + 0.5,
+                motor3 * 0.5 + 0.5,
+                motor4 * 0.5 + 0.5,
+                motor5 * 0.5 + 0.5,
+                motor6 * 0.5 + 0.5,
+                motor7 * 0.5 + 0.5,
+                motor8 * 0.5 + 0.5]
 
 
 # Create a new motion packet from parameters. Called when a FarPi action is received
 def action_motion(x, y, z, roll, pitch, yaw):
-    # print("action_motion x:{} y:{} z:{} roll:{} pitch:{} yaw:{}".format(x, y, z, roll, pitch, yaw))
+    print("action_motion x:{} y:{} z:{} roll:{} pitch:{} yaw:{}".format(x, y, z, roll, pitch, yaw))
     new_motion = MotionState()
     new_motion.x = x
     new_motion.y = y
