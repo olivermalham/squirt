@@ -75,7 +75,7 @@ class MotionState:
 
         # Motor 7 - vertical top left
         motor7 = ((0.0 * self.x) + (0.0 * self.y) + (1.0 * self.z)
-                  + (1.0 * self.pitch) + (-1.0 * self.roll) + (0.0 * self.yaw))
+                  + (-1.0 * self.pitch) + (1.0 * self.roll) + (0.0 * self.yaw))
 
         # Map the motor values to values the hardware understands
         # For servos, this is 0.0 - 1.0, with 0.5 being neutral
@@ -92,7 +92,7 @@ class MotionState:
 
 # Create a new motion packet from parameters. Called when a FarPi action is received
 def action_motion(x, y, z, roll, pitch, yaw):
-    print("action_motion x:{} y:{} z:{} roll:{} pitch:{} yaw:{}".format(x, y, z, roll, pitch, yaw))
+    # print("action_motion x:{} y:{} z:{} roll:{} pitch:{} yaw:{}".format(x, y, z, roll, pitch, yaw))
     new_motion = MotionState()
     new_motion.x = x
     new_motion.y = y
