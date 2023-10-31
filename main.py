@@ -35,8 +35,8 @@ import motion
 # Configure peripherals, sensor fusion
 # ----------------------------------------------------------------------------------------------------------------------
 i2c = I2C(0, scl=Pin(21), sda=Pin(20), freq=400000)
-imu = MPU9250(i2c)
-fuse = Fusion()
+# imu = MPU9250(i2c)
+# fuse = Fusion()
 display = StatusDisplay(i2c)
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -86,8 +86,8 @@ test_loop = 0
 # 2. Write / test basic stabilisation DONE
 # 3. Get the connection to FarPi finished
 # 4. Get D-Shot PIO working
-# 5. Get sensor reading working
-# 6. Get status display designed and implemented
+# 5. Get sensor reading working DONE (for IMU)
+# 6. Get status display designed and implemented DONE
 
 
 def correction(orientation):
@@ -118,7 +118,7 @@ while True:
         if c != '\n':
             command_input = command_input + c
         else:
-            print("Command: {}".format(command_input))
+            # print("Command: {}".format(command_input))
 
             # Process command here
             # TODO: This is a mess. No need for such general purpose code here
@@ -152,22 +152,24 @@ while True:
         # TODO
 
         # Get the current orientation vector
-        fuse.update_nomag(imu.accel.xyz, imu.gyro.xyz)
+        # fuse.update_nomag(imu.accel.xyz, imu.gyro.xyz)
 
         # Calculate the difference between the two orientation vectors
         # TODO
 
         # Update the command torque vector for each axis where hold = True
         # TODO
-        current_motion = motion.action_motion(0, 0, 0,
-                                              correction(fuse.pitch),
-                                              correction(fuse.roll),
-                                              correction(fuse.heading))
+        # FIXME! Need to capture IMU measured values as well as the target vectors
+        # current_motion = motion.action_motion(0, 0, 0,
+        #                                       correction(fuse.pitch),
+        #                                       correction(fuse.roll),
+        #                                       correction(fuse.heading))
 
         # Map the translation and torque vector into individual motor powers
         motor_values = current_motion.map_to_motors()
-        # print(json.dumps(current_motion.__dict__))
-        # print(motor_values)
+
+        current_state = current_motion.__dict__
+        print(json.dumps(current_state))
 
         # Smooth the motor power values?
         # TODO
@@ -207,9 +209,9 @@ while True:
                 display.farpi_link = False
 
             # print("Test loop: {} - {} : {}".format(test_loop, test_data[test_loop], motor_values))
-            print("IMU: Pitch: {}\tRoll: {}\tYaw: {}".format(current_motion.roll,
-                                                             current_motion.pitch,
-                                                             current_motion.yaw))
+            # print("IMU: Pitch: {}\tRoll: {}\tYaw: {}".format(current_motion.roll,
+            #                                                  current_motion.pitch,
+            #                                                  current_motion.yaw))
             # if count % 500 == 0:
             #     # current_motion = motion.action_motion(*[0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
             #     test_loop = test_loop + 1 if (test_loop < len(test_data) - 1) else 0

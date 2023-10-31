@@ -1,7 +1,6 @@
 from libs import ssd1306
 
 
-# TODO: Figure out how to display all this info - need some UI design
 class StatusDisplay:
     # OLED, 128 x 32
     _device = None
