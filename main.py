@@ -1,13 +1,14 @@
 import sys
 import json
 import uselect
-from machine import I2C, Pin
+from machine import I2C, Pin, mem32
 import utime as time
 from display import StatusDisplay
 from servo import Servo, servo2040, ANGULAR
 from libs.mpu9250 import MPU9250
 from libs.fusion import Fusion
 import motion
+import status
 
 # ----------------------------------------------------------------------------------------------------------------------
 # NOTES
@@ -19,15 +20,6 @@ import motion
 #
 # Packet from controller will be 6 axis force values - translation and rotation.
 # Additional fields for hold flags, and a few digital switches for lighting etc
-#
-# Example packets:
-# {"action":"action_motion", "parameters":{"x":1.0, "y":0.0, "z":0.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0}}
-# {"action":"action_motion", "parameters":{"x":0.0, "y":1.0, "z":0.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0}}
-# {"action":"action_motion", "parameters":{"x":0.0, "y":0.0, "z":1.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0}}
-#
-# {"action":"action_motion", "parameters":{"x":0.0, "y":0.0, "z":0.0, "roll": 1.0, "pitch": 0.0, "yaw": 0.0}}
-# {"action":"action_motion", "parameters":{"x":0.0, "y":0.0, "z":0.0, "roll": 0.0, "pitch": 1.0, "yaw": 0.0}}
-# {"action":"action_motion", "parameters":{"x":0.0, "y":0.0, "z":0.0, "roll": 0.0, "pitch": 0.0, "yaw": 1.0}}
 # ----------------------------------------------------------------------------------------------------------------------
 
 
@@ -38,6 +30,9 @@ i2c = I2C(0, scl=Pin(21), sda=Pin(20), freq=400000)
 # imu = MPU9250(i2c)
 # fuse = Fusion()
 display = StatusDisplay(i2c)
+SIE_STATUS = const(0x50110000 + 0x50)
+CONNECTED = const(1 << 16)
+SUSPENDED = const(1 << 4)
 # ----------------------------------------------------------------------------------------------------------------------
 
 
@@ -69,7 +64,7 @@ update_period = 1000/50  # Milliseconds between updates
 count = 0
 command_input = ""
 current_motion = motion.MotionState()
-
+target_motion = current_motion
 
 test_data = [
     [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -99,6 +94,8 @@ def correction(orientation):
     return round(delta, 2)
 
 
+current_status = status.Status()
+
 # ----------------------------------------------------------------------------------------------------------------------
 # Main loop
 # ----------------------------------------------------------------------------------------------------------------------
@@ -118,33 +115,17 @@ while True:
         if c != '\n':
             command_input = command_input + c
         else:
-            # print("Command: {}".format(command_input))
-
-            # Process command here
-            # TODO: This is a mess. No need for such general purpose code here
+            # Process command here - single action, just sets the target state to the passed parameters
             try:
                 command = json.loads(command_input)
-                # print("json.loads {}".format(command))
                 action = command["action"]
                 parameters = command["parameters"]
-                # action_motion(**parameters)
-                target = eval(action)
-                if callable(target):
-                    # Pass the HAL instance down to the component
-                    current_motion = target(**parameters)
+                target_motion = motion.action_motion(**parameters)
             except:
-                # TODO:Need to do better than this!
-                print("Exception!")
+                pass
             # Clear the buffer
             command_input = ""
-
-            # result = {}
-            # actions = []
-            # for entry in dir():
-            #     if entry.startswith("action_"):
-            #         actions.append(f"{entry}")
-            # result["actions"] = actions
-            # return json.dumps(result)
+        # current_status.status = command_input
 
     # Refresh outputs at 50Hz to match standard servo PWM frequency
     if time.ticks_diff(time.ticks_ms(), last_update) > update_period:
@@ -168,15 +149,19 @@ while True:
         # Map the translation and torque vector into individual motor powers
         motor_values = current_motion.map_to_motors()
 
-        current_state = current_motion.__dict__
-        print(json.dumps(current_state))
+        current_state_string = json.dumps(current_motion.__dict__)
+        current_status_string = json.dumps(current_status.__dict__)
 
-        # Smooth the motor power values?
-        # TODO
+        current_state_string = current_state_string[:-1] + "," + current_status_string[1:]
 
-        # Output the motor powers to the ESCs
-        # for i in range(len(output)):
-        #     output[i].to_percent(motor_values[i])
+        if (mem32[SIE_STATUS] & (CONNECTED | SUSPENDED)) == CONNECTED:
+            print(current_state_string)
+            current_status.farpi_link = True
+        else:
+            current_status.farpi_link = False
+
+        print(current_state_string)
+        # print(current_status_string)
 
         # Update the digital outputs
         # TODO
@@ -184,29 +169,29 @@ while True:
         last_update = time.ticks_ms()
         count += 1
 
-        display.refresh()
+        display.refresh(current_status)
 
         # Once a second loop
         if count % 50 == 0:
 
-            display.status = "Count {}".format(count)
+            # current_status.status = "Count {}".format(count)
 
-            display.battery_volts = display.battery_volts - 0.1 if display.battery_volts > 9.0 else 11.0
+            current_status.battery_volts = current_status.battery_volts - 0.1 if current_status.battery_volts > 9.0 else 11.0
 
             # off -> power -> alive -> off
-            if display.odroid_power is False:
-                display.odroid_power = True
-                display.tether_link = True
-                display.farpi_link = True
-            elif display.odroid_power and display.odroid_alive is False:
-                display.odroid_alive = True
-                display.tether_ethernet = True
+            if current_status.odroid_power is False:
+                current_status.odroid_power = True
+                current_status.tether_link = True
+                # current_status.farpi_link = True
+            elif current_status.odroid_power and current_status.odroid_alive is False:
+                current_status.odroid_alive = True
+                current_status.tether_ethernet = True
             else:
-                display.odroid_alive = False
-                display.odroid_power = False
-                display.tether_link = False
-                display.tether_ethernet = False
-                display.farpi_link = False
+                current_status.odroid_alive = False
+                current_status.odroid_power = False
+                current_status.tether_link = False
+                current_status.tether_ethernet = False
+                # current_status.farpi_link = False
 
             # print("Test loop: {} - {} : {}".format(test_loop, test_data[test_loop], motor_values))
             # print("IMU: Pitch: {}\tRoll: {}\tYaw: {}".format(current_motion.roll,

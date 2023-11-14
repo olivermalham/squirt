@@ -1,35 +1,17 @@
 from libs import ssd1306
+from status import Status
 
 
 class StatusDisplay:
     # OLED, 128 x 32
     _device = None
 
-    battery_volts = 0.0
-    odroid_alive = False
-    odroid_power = False
-    tether_ethernet = False
-    tether_link = False
-
-    farpi_link = False
-
-    esc_1_active = True
-    esc_2_active = False
-    esc_3_active = False
-    esc_4_active = True
-
-    esc_5_active = True
-    esc_6_active = False
-    esc_7_active = True
-    esc_8_active = False
-
-    status = ""
-
     def __init__(self, i2c):
         self._device = ssd1306.SSD1306_I2C(128, 32, i2c)
-        self.battery_volts = 11.0
+        self.status = None
 
-    def refresh(self):
+    def refresh(self, status):
+        self.status = status
         self._device.fill(0)
         self.draw_battery()
         self.draw_cpu()
@@ -37,26 +19,26 @@ class StatusDisplay:
         self.draw_esc()
         self.draw_farpi()
 
-        self.draw_centered(self.status)
+        self.draw_centered(status.status)
         self._device.show()
 
     def draw_battery(self):
 
-        bar_length = int(((self.battery_volts - 9.0) / 2.0) * 26)
+        bar_length = int(((self.status.battery_volts - 9.0) / 2.0) * 26)
 
         self._device.rect(3, 0, 30, 9, 1)  # Battery outline
         self._device.fill_rect(33, 2, 3, 5, 1)  # Battery end tab
         self._device.fill_rect(5, 2, bar_length, 5, 1)  # Bar
 
-        self.draw_right_justified("{}v".format(round(self.battery_volts, 1)), 40)
+        self.draw_right_justified("{}v".format(round(self.status.battery_volts, 1)), 40)
 
     def draw_cpu(self):
-        if not self.odroid_power:
+        if not self.status.odroid_power:
             return
         # self._device.rect(42, 0, 20, 20, 1)  # Icon boundary
 
         # CPU center
-        if self.odroid_alive:
+        if self.status.odroid_alive:
             self._device.fill_rect(46, 4, 12, 12, 1)
         else:
             self._device.rect(46, 4, 12, 12, 1)
@@ -85,10 +67,10 @@ class StatusDisplay:
     def draw_net(self):
         # self._device.rect(64, 0, 20, 20, 1)  # Icon boundary
 
-        if self.tether_link is False:
+        if self.status.tether_link is False:
             return
 
-        if self.tether_ethernet is False:
+        if self.status.tether_ethernet is False:
             self._device.rect(70, 0, 8, 8, 1)
             self._device.rect(64, 12, 8, 8, 1)
             self._device.rect(76, 12, 8, 8, 1)
@@ -108,22 +90,22 @@ class StatusDisplay:
         self._device.rect(90, 0, 10, 9, 1)
         self._device.line(100, 4, 103, 4, 1)
 
-        if self.esc_1_active:
+        if self.status.esc_1_active:
             self._device.fill_rect(87, 10, 4, 4, 1)
-        if self.esc_2_active:
+        if self.status.esc_2_active:
             self._device.fill_rect(92, 10, 4, 4, 1)
-        if self.esc_3_active:
+        if self.status.esc_3_active:
             self._device.fill_rect(97, 10, 4, 4, 1)
-        if self.esc_4_active:
+        if self.status.esc_4_active:
             self._device.fill_rect(102, 10, 4, 4, 1)
 
-        if self.esc_5_active:
+        if self.status.esc_5_active:
             self._device.fill_rect(87, 16, 4, 4, 1)
-        if self.esc_6_active:
+        if self.status.esc_6_active:
             self._device.fill_rect(92, 16, 4, 4, 1)
-        if self.esc_7_active:
+        if self.status.esc_7_active:
             self._device.fill_rect(97, 16, 4, 4, 1)
-        if self.esc_8_active:
+        if self.status.esc_8_active:
             self._device.fill_rect(102, 16, 4, 4, 1)
 
     def draw_farpi(self):
@@ -133,7 +115,7 @@ class StatusDisplay:
         self._device.line(113, 20, 124, 20, 1)  # Base
 
         # Rays
-        if self.farpi_link:
+        if self.status.farpi_link:
             self._device.fill_rect(116, 8, 5, 5, 1)  # Central aerial pip
 
             self._device.line(118, 1, 118, 5, 1)
