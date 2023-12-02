@@ -1,70 +1,48 @@
-import rp2
+from machine import Pin
+from rp2 import StateMachine, asm_pio
 
 
-@rp2.asm_pio(out_shiftdir=0, autopull=True, pull_thresh=8, autopush=True, push_thresh=8, sideset_init=(rp2.PIO.OUT_LOW, rp2.PIO.OUT_HIGH), out_init=rp2.PIO.OUT_LOW)
-def dshot_pio():
-    .program dshot_encoder
+@asm_pio(autopull=True, pull_thresh=16, set_init=rp2.PIO.OUT_LOW)
+def dshot_prog():
+    # DShot600 frame length is 1.67us, 0.625us for zero, 1.25us for one, 0.42us dead band
+    # Auto-pull set to 16 bits means this should only loop 16 times
+    wrap_target()
+    out(x, 1)  # Shift one bit out of the OSR into the X register - this is the next bit to send
 
-    .define public BIT_PERIOD 40
+    # Output minimum pulse length (for 0 bit) - 0.625us
+    set(pins, 1)[31]
+    set(pins, 1)[31]
+    set(pins, 1)[12]
+    jmp(not_x, "bitlow")  # If the bit is 0, jump over the high pulse
 
-    .define ONE_HIGH 30
-    .define ONE_LOW (BIT_PERIOD - ONE_HIGH)
-    .define ONE_HIGH_DELAY (ONE_HIGH - 1)
-    .define ONE_LOW_DELAY (ONE_LOW - 5)
+    # If bit is a 1 wait another 0.625us
+    set(pins, 1)[31]
+    set(pins, 1)[31]
+    set(pins, 1)[13]
+    jmp("deadspace")
 
-    .define ZERO_HIGH 15
-    .define ZERO_LOW (BIT_PERIOD - ZERO_HIGH)
-    .define ZERO_HIGH_DELAY (ZERO_HIGH - 1)
-    .define ZERO_LOW_DELAY (ZERO_LOW - 5)
+    # Otherwise 0 for 0.625us
+    label("bitlow")
+    set(pins, 0)[31]
+    set(pins, 0)[31]
+    set(pins, 0)[13]
 
-    // 8kHz DShot300 -> 1500 frame period -> 1500 - (BIT_PERIOD * 16 + 1) = 859 delay
-    .define FRAME_DELAY (32 - 2)
-    .define FRAME_DELAY_COUNT 26
-    .define FRAME_DELAY_REMAINDER (27 - 5)  // 27 = 859 - 32 * 26
-
-    init:
-      pull block
-      mov x, osr
-
-    start_frame:
-      pull noblock
-      mov x, osr
-      out y, 16 ; discard 16 most significant bits
-      set y, FRAME_DELAY_COUNT
-    frame_delay_loop:
-      jmp !y check_bit [FRAME_DELAY]
-      jmp y-- frame_delay_loop
-      nop [FRAME_DELAY_REMAINDER]
-    check_bit:
-      jmp !osre start_bit
-      jmp start_frame
-    start_bit:
-      out y, 1
-      jmp !y do_zero
-    do_one:
-      set pins, 1 [ONE_HIGH_DELAY]
-      set pins, 0 [ONE_LOW_DELAY]
-      jmp check_bit
-    do_zero:
-      set pins, 1 [ZERO_HIGH_DELAY]
-      set pins, 0 [ZERO_LOW_DELAY]
-      jmp check_bit
+    # set output low for dead band for 0.42us
+    label("deadspace")
+    set(pins, 0)[31]
+    set(pins, 0)[18]
+    wrap()
 
 
-    % c-sdk {
-    static inline void dshot_encoder_program_init(PIO pio, uint sm, uint offset, uint pin) {
-        pio_sm_config c = dshot_encoder_program_get_default_config(offset);
+class Dshot600:
+    # Implements the DSHOT600 protocol
+    def __init__(self, sm_id, pin):
+        self._sm = StateMachine(sm_id, dshot_prog, set_base=Pin(pin))
+        self._sm.active(1)
 
-        sm_config_set_set_pins(&c, pin, 1);
-        pio_gpio_init(pio, pin);
-        pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);
+    def set(self, value, telemetry):
+        # TODO - Need to build data frame
+        self._sm.put(value << 16)
 
-        sm_config_set_out_shift(&c, false, false, 32);
-
-        double clocks_per_us = clock_get_hz(clk_sys) / 1000000;
-        // 3.333us per bit for dshot300
-        sm_config_set_clkdiv(&c, 3.333 / dshot_encoder_BIT_PERIOD * clocks_per_us);
-
-        pio_sm_init(pio, sm, offset, &c);
-    }
-    %}
+    def crc(self, value):
+        pass
