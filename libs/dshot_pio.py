@@ -1,48 +1,93 @@
-from machine import Pin
-from rp2 import StateMachine, asm_pio
-
-
-@asm_pio(autopull=True, pull_thresh=16, set_init=rp2.PIO.OUT_LOW)
-def dshot_prog():
-    # DShot600 frame length is 1.67us, 0.625us for zero, 1.25us for one, 0.42us dead band
-    # Auto-pull set to 16 bits means this should only loop 16 times
-    wrap_target()
-    out(x, 1)  # Shift one bit out of the OSR into the X register - this is the next bit to send
-
-    # Output minimum pulse length (for 0 bit) - 0.625us
-    set(pins, 1)[31]
-    set(pins, 1)[31]
-    set(pins, 1)[12]
-    jmp(not_x, "bitlow")  # If the bit is 0, jump over the high pulse
-
-    # If bit is a 1 wait another 0.625us
-    set(pins, 1)[31]
-    set(pins, 1)[31]
-    set(pins, 1)[13]
-    jmp("deadspace")
-
-    # Otherwise 0 for 0.625us
-    label("bitlow")
-    set(pins, 0)[31]
-    set(pins, 0)[31]
-    set(pins, 0)[13]
-
-    # set output low for dead band for 0.42us
-    label("deadspace")
-    set(pins, 0)[31]
-    set(pins, 0)[18]
-    wrap()
-
+import utime as time
 
 class Dshot600:
     # Implements the DSHOT600 protocol
-    def __init__(self, sm_id, pin):
-        self._sm = StateMachine(sm_id, dshot_prog, set_base=Pin(pin))
+    # Output value is clamped to 0-2000
+    # If telemetry is set to true, a UART will need to be configured to receive to get the data, this
+    # class does not handle it (should it?)
+    # TODO: Add the special commands, including suitable repeats
+    def __init__(self, statemachine):
+        self._sm = statemachine
+        # self._sm = StateMachine(statemachine, dshot_prog, set_base=Pin(pin))
         self._sm.active(1)
 
-    def set(self, value, telemetry):
-        # TODO - Need to build data frame
-        self._sm.put(value << 16)
+    def send(self, value, telemetry=False, repeat=1):
+        # Construct the frame and send it via PIO statemachine
+        value = 2000 if abs(value) > 2000 else abs(value)
+        frame = value << 5
+        frame = frame if not telemetry else frame | 0b0000_0000_0001_0000
+        frame = frame | ((value ^ (value >> 4) ^ (value >> 8)) & 0x0F)  # CRC
+        frame = frame << 16  # Shift to ditch the top 16 bits
 
-    def crc(self, value):
+        for i in range(repeat):
+            self._sm.put(frame)
+
+    def arm(self):
+        start_time = time.ticks_ms()
+        # Send a stream of motor stop commands for 400ms to arm the controller
+        while time.ticks_diff(time.ticks_ms(), start_time) < 1000:
+            self.send(0)
+        print("Armed")
+
+    def motor_stop(self):
+        # 0
         pass
+
+    def beep1(self):
+        # 1
+        pass
+
+    def beep2(self):
+        # 2
+        pass
+
+    def beep3(self):
+        # 3
+        pass
+
+    def beep4(self):
+        # 4
+        pass
+
+    def beep5(self):
+        # 5
+        pass
+
+    def info(self):
+        # 6, 12ms min wait
+        pass
+
+    def direction_1(self):
+        # 7
+        # x6
+        pass
+
+    def direction_2(self):
+        # 8
+        # x6
+        pass
+
+    def three_d_mode(self, active=False):
+        # 9 / 10
+        # x6
+        pass
+
+    def save_settings(self):
+        # 12
+        # x6, 35ms min pause
+        pass
+
+    def enable_telemetry(self, value):
+        # 32 disable, 33 enable x6
+        pass
+
+    # TODO!
+    """
+    Telemetry commands:
+    42 temp 1C/bit
+    43 volts 10mV/bit
+    44 current 100mA/bit
+    45 consumption 10mAh/bit
+    46 eRPM 100erpm/bit
+    47 telemetry period 16us/bit
+    """

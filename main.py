@@ -1,14 +1,13 @@
 import sys
 import json
 import uselect
-from machine import I2C, Pin, mem32
+from machine import mem32, Pin
 import utime as time
-from display import StatusDisplay
-from servo import Servo, servo2040, ANGULAR
-from libs.mpu9250 import MPU9250
-from libs.fusion import Fusion
+from micropython import const
+from rp2 import StateMachine, asm_pio
 import motion
 import status
+from libs.dshot_pio import Dshot600
 
 # ----------------------------------------------------------------------------------------------------------------------
 # NOTES
@@ -26,10 +25,10 @@ import status
 # ----------------------------------------------------------------------------------------------------------------------
 # Configure peripherals, sensor fusion
 # ----------------------------------------------------------------------------------------------------------------------
-i2c = I2C(0, scl=Pin(21), sda=Pin(20), freq=400000)
+# i2c = I2C(0, scl=Pin(21), sda=Pin(20), freq=400000)
 # imu = MPU9250(i2c)
 # fuse = Fusion()
-display = StatusDisplay(i2c)
+# display = StatusDisplay(i2c)
 SIE_STATUS = const(0x50110000 + 0x50)
 CONNECTED = const(1 << 16)
 SUSPENDED = const(1 << 4)
@@ -37,22 +36,62 @@ SUSPENDED = const(1 << 4)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# Create servos
+# PIO code for DShot protocol. For some reason MicroPython doesn't like importing libraries in sub-files, so have
+# to make it messy like this. Not happy :(
+# ----------------------------------------------------------------------------------------------------------------------
+@asm_pio(autopull=True, pull_thresh=16, set_init=rp2.PIO.OUT_LOW)
+def dshot_prog():
+    # DShot600 frame length is 1.67us, 0.625us for zero, 1.25us for one, 0.42us dead band
+    # Loop values here have been tuned via oscilloscope
+    # Code is crude but does the job!
+    # Auto-pull set to 16 bits means this should only loop 16 times
+
+    wrap_target()
+    out(x, 1)  # Shift one bit out of the OSR into the X register - this is the next bit to send
+
+    # Output minimum pulse length (for 0 bit) - 0.625us
+    set(pins, 1)[31]
+    set(pins, 1)[31]
+    set(pins, 1)[12]
+    jmp(not_x, "bitlow")  # If the bit is 0, jump over the high pulse
+
+    # If bit is a 1 wait another 0.625us
+    set(pins, 1)[31]
+    set(pins, 1)[31]
+    set(pins, 1)[13]
+    jmp("deadspace")
+
+    # Otherwise 0 for 0.625us
+    label("bitlow")
+    set(pins, 0)[31]
+    set(pins, 0)[31]
+    set(pins, 0)[13]
+
+    # set output low for dead band for 0.42us
+    label("deadspace")
+    set(pins, 0)[31]
+    set(pins, 0)[18]
+    wrap()
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Create motor controllers
 # ----------------------------------------------------------------------------------------------------------------------
 output = [
-    Servo(servo2040.SERVO_1, calibration=ANGULAR, freq=50),
-    Servo(servo2040.SERVO_2, calibration=ANGULAR, freq=50),
-    Servo(servo2040.SERVO_3, calibration=ANGULAR, freq=50),
-    Servo(servo2040.SERVO_4, calibration=ANGULAR, freq=50),
+    Dshot600(statemachine=StateMachine(0, dshot_prog, set_base=Pin(2))),
+    Dshot600(statemachine=StateMachine(1, dshot_prog, set_base=Pin(3))),
+    Dshot600(statemachine=StateMachine(2, dshot_prog, set_base=Pin(4))),
+    Dshot600(statemachine=StateMachine(3, dshot_prog, set_base=Pin(5))),
 
-    Servo(servo2040.SERVO_5, calibration=ANGULAR, freq=50),
-    Servo(servo2040.SERVO_6, calibration=ANGULAR, freq=50),
-    Servo(servo2040.SERVO_7, calibration=ANGULAR, freq=50),
-    Servo(servo2040.SERVO_8, calibration=ANGULAR, freq=50),
+    Dshot600(statemachine=StateMachine(4, dshot_prog, set_base=Pin(6))),
+    Dshot600(statemachine=StateMachine(5, dshot_prog, set_base=Pin(7))),
+    Dshot600(statemachine=StateMachine(6, dshot_prog, set_base=Pin(8))),
+    Dshot600(statemachine=StateMachine(7, dshot_prog, set_base=Pin(9)))
 ]
 
-[servo.enable() for servo in output]
-[servo.to_percent(0.5) for servo in output]
+# Arm the motors
+[motor.arm() for motor in output]
+[motor.send(500) for motor in output]
 # ----------------------------------------------------------------------------------------------------------------------
 
 
@@ -169,7 +208,7 @@ while True:
         last_update = time.ticks_ms()
         count += 1
 
-        display.refresh(current_status)
+        # display.refresh(current_status)
 
         # Once a second loop
         if count % 50 == 0:
