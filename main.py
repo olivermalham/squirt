@@ -78,22 +78,20 @@ def dshot_prog():
 # Create motor controllers
 # ----------------------------------------------------------------------------------------------------------------------
 output = [
-    Dshot600(statemachine=StateMachine(0, dshot_prog, set_base=Pin(2))),
-    Dshot600(statemachine=StateMachine(1, dshot_prog, set_base=Pin(3))),
-    Dshot600(statemachine=StateMachine(2, dshot_prog, set_base=Pin(4))),
-    Dshot600(statemachine=StateMachine(3, dshot_prog, set_base=Pin(5))),
+    Dshot600(statemachine=StateMachine(0, dshot_prog, set_base=Pin(2), freq=125_000_000)),
+    Dshot600(statemachine=StateMachine(1, dshot_prog, set_base=Pin(3), freq=125_000_000)),
+    Dshot600(statemachine=StateMachine(2, dshot_prog, set_base=Pin(4), freq=125_000_000)),
+    Dshot600(statemachine=StateMachine(3, dshot_prog, set_base=Pin(5), freq=125_000_000)),
 
-    Dshot600(statemachine=StateMachine(4, dshot_prog, set_base=Pin(6))),
-    Dshot600(statemachine=StateMachine(5, dshot_prog, set_base=Pin(7))),
-    Dshot600(statemachine=StateMachine(6, dshot_prog, set_base=Pin(8))),
-    Dshot600(statemachine=StateMachine(7, dshot_prog, set_base=Pin(9)))
+    Dshot600(statemachine=StateMachine(4, dshot_prog, set_base=Pin(6), freq=125_000_000)),
+    Dshot600(statemachine=StateMachine(5, dshot_prog, set_base=Pin(7), freq=125_000_000)),
+    Dshot600(statemachine=StateMachine(6, dshot_prog, set_base=Pin(8), freq=125_000_000)),
+    Dshot600(statemachine=StateMachine(7, dshot_prog, set_base=Pin(9), freq=125_000_000))
 ]
 
-# Arm the motors
-[motor.arm() for motor in output]
-[motor.send(500) for motor in output]
 # ----------------------------------------------------------------------------------------------------------------------
-
+motor_value = 48
+motor_delta = 1
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Get timing stuff sorted out
@@ -135,6 +133,17 @@ def correction(orientation):
 
 current_status = status.Status()
 
+
+# Arm the motors
+# [motor.arm() for motor in output]
+for i in range(500):
+    [motor.send(48) for motor in output]
+for i in range(500):
+    [motor.send(2000) for motor in output]
+for i in range(500):
+    [motor.send(48) for motor in output]
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 # Main loop
 # ----------------------------------------------------------------------------------------------------------------------
@@ -166,8 +175,19 @@ while True:
             command_input = ""
         # current_status.status = command_input
 
+    # if time.ticks_diff(time.ticks_ms(), last_update) > 1:
+    [motor.send(motor_value) for motor in output]
+
     # Refresh outputs at 50Hz to match standard servo PWM frequency
     if time.ticks_diff(time.ticks_ms(), last_update) > update_period:
+        motor_value += motor_delta
+
+        if motor_value >= 2000:
+            motor_delta = -1
+        if motor_value <= 48:
+            motor_delta = 1
+
+        # print(motor_value)
         # Update the target orientation vector using the new motion vector
         # TODO
 
@@ -194,12 +214,11 @@ while True:
         current_state_string = current_state_string[:-1] + "," + current_status_string[1:]
 
         if (mem32[SIE_STATUS] & (CONNECTED | SUSPENDED)) == CONNECTED:
-            print(current_state_string)
+            # print(current_state_string)
             current_status.farpi_link = True
         else:
             current_status.farpi_link = False
 
-        print(current_state_string)
         # print(current_status_string)
 
         # Update the digital outputs
@@ -209,6 +228,9 @@ while True:
         count += 1
 
         # display.refresh(current_status)
+
+        # Motor test
+        # [motor.send(1999) for motor in output]
 
         # Once a second loop
         if count % 50 == 0:

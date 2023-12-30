@@ -1,5 +1,6 @@
 import utime as time
 
+
 class Dshot600:
     # Implements the DSHOT600 protocol
     # Output value is clamped to 0-2000
@@ -14,20 +15,20 @@ class Dshot600:
     def send(self, value, telemetry=False, repeat=1):
         # Construct the frame and send it via PIO statemachine
         value = 2000 if abs(value) > 2000 else abs(value)
-        frame = value << 5
-        frame = frame if not telemetry else frame | 0b0000_0000_0001_0000
-        frame = frame | ((value ^ (value >> 4) ^ (value >> 8)) & 0x0F)  # CRC
-        frame = frame << 16  # Shift to ditch the top 16 bits
+        frame = value << 1 | telemetry
+        crc = (frame ^ (frame >> 4) ^ (frame >> 8)) & 0x0F  # CRC
+        frame = (frame << 4) | crc
 
         for i in range(repeat):
-            self._sm.put(frame)
+            self._sm.put(frame << 16)  # Shift to ditch the top 16 bits
 
     def arm(self):
         start_time = time.ticks_ms()
         # Send a stream of motor stop commands for 400ms to arm the controller
-        while time.ticks_diff(time.ticks_ms(), start_time) < 1000:
+        while time.ticks_diff(time.ticks_ms(), start_time) < 1100:
             self.send(0)
-        print("Armed")
+        # time.sleep_ms(500)
+        # print("Armed")
 
     def motor_stop(self):
         # 0
