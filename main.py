@@ -1,13 +1,16 @@
 import sys
 import json
 import uselect
-from machine import mem32, Pin
+from machine import mem32, Pin, I2C
 import utime as time
 from micropython import const
 from rp2 import StateMachine, asm_pio
 import motion
 import status
+from libs.mpu9250 import MPU9250
 from libs.dshot_pio import Dshot600
+from libs.fusion import Fusion
+from display import StatusDisplay
 
 # ----------------------------------------------------------------------------------------------------------------------
 # NOTES
@@ -22,13 +25,33 @@ from libs.dshot_pio import Dshot600
 # ----------------------------------------------------------------------------------------------------------------------
 
 
+# ------------------------------------------------------
+# Waveshare RP2040 Zero Pinout (pins are GP numbering)
+# ------------------------------------------------------
+# 0-3 ESC 1
+# 4-7 ESC 2
+# 8-9 UART for ESC telemetry
+# 10-11 I2C1 for display
+# 12-13 I2C0 for IMU
+# 14-15 TODO: Network link status inputs
+# 26 ADC0 battery voltage
+# 27 ADC1 for depth sensor
+# 28 Digital output - ODroid power
+# 29 Digital output - lighting
+
 # ----------------------------------------------------------------------------------------------------------------------
-# Configure peripherals, sensor fusion
+# Configure peripherals
 # ----------------------------------------------------------------------------------------------------------------------
-# i2c = I2C(0, scl=Pin(21), sda=Pin(20), freq=400000)
-# imu = MPU9250(i2c)
-# fuse = Fusion()
-# display = StatusDisplay(i2c)
+
+# IMU
+i2c0 = I2C(0, scl=Pin(13), sda=Pin(12), freq=400000)
+imu = MPU9250(i2c0)
+fuse = Fusion()
+
+# Display
+i2c1 = I2C(1, scl=Pin(11), sda=Pin(10), freq=400000)
+display = StatusDisplay(i2c1)
+
 SIE_STATUS = const(0x50110000 + 0x50)
 CONNECTED = const(1 << 16)
 SUSPENDED = const(1 << 4)
@@ -78,20 +101,17 @@ def dshot_prog():
 # Create motor controllers
 # ----------------------------------------------------------------------------------------------------------------------
 output = [
-    Dshot600(statemachine=StateMachine(0, dshot_prog, set_base=Pin(2), freq=125_000_000)),
-    Dshot600(statemachine=StateMachine(1, dshot_prog, set_base=Pin(3), freq=125_000_000)),
-    Dshot600(statemachine=StateMachine(2, dshot_prog, set_base=Pin(4), freq=125_000_000)),
-    Dshot600(statemachine=StateMachine(3, dshot_prog, set_base=Pin(5), freq=125_000_000)),
+    Dshot600(statemachine=StateMachine(0, dshot_prog, set_base=Pin(0), freq=125_000_000)),
+    Dshot600(statemachine=StateMachine(1, dshot_prog, set_base=Pin(1), freq=125_000_000)),
+    Dshot600(statemachine=StateMachine(2, dshot_prog, set_base=Pin(2), freq=125_000_000)),
+    Dshot600(statemachine=StateMachine(3, dshot_prog, set_base=Pin(3), freq=125_000_000)),
 
-    Dshot600(statemachine=StateMachine(4, dshot_prog, set_base=Pin(6), freq=125_000_000)),
-    Dshot600(statemachine=StateMachine(5, dshot_prog, set_base=Pin(7), freq=125_000_000)),
-    Dshot600(statemachine=StateMachine(6, dshot_prog, set_base=Pin(8), freq=125_000_000)),
-    Dshot600(statemachine=StateMachine(7, dshot_prog, set_base=Pin(9), freq=125_000_000))
+    Dshot600(statemachine=StateMachine(4, dshot_prog, set_base=Pin(4), freq=125_000_000)),
+    Dshot600(statemachine=StateMachine(5, dshot_prog, set_base=Pin(5), freq=125_000_000)),
+    Dshot600(statemachine=StateMachine(6, dshot_prog, set_base=Pin(6), freq=125_000_000)),
+    Dshot600(statemachine=StateMachine(7, dshot_prog, set_base=Pin(7), freq=125_000_000))
 ]
-
 # ----------------------------------------------------------------------------------------------------------------------
-motor_value = 48
-motor_delta = 1
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Get timing stuff sorted out
@@ -102,6 +122,9 @@ count = 0
 command_input = ""
 current_motion = motion.MotionState()
 target_motion = current_motion
+
+# Only start data out when we've started receiving data from the host - this is to avoid blocking on output buffer full
+comms_active = False
 
 test_data = [
     [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -116,8 +139,8 @@ test_loop = 0
 # TODO NEXT
 # 1. Test vertical thrust output / mixing DONE
 # 2. Write / test basic stabilisation DONE
-# 3. Get the connection to FarPi finished
-# 4. Get D-Shot PIO working
+# 3. Get the connection to FarPi finished  TODO!
+# 4. Get D-Shot PIO working DONE
 # 5. Get sensor reading working DONE (for IMU)
 # 6. Get status display designed and implemented DONE
 
@@ -160,6 +183,8 @@ while True:
             print("Bailing out")
             exit()
 
+        comms_active = True
+
         if c != '\n':
             command_input = command_input + c
         else:
@@ -180,19 +205,13 @@ while True:
 
     # Refresh outputs at 50Hz to match standard servo PWM frequency
     if time.ticks_diff(time.ticks_ms(), last_update) > update_period:
-        motor_value += motor_delta
-
-        if motor_value >= 2000:
-            motor_delta = -1
-        if motor_value <= 48:
-            motor_delta = 1
 
         # print(motor_value)
         # Update the target orientation vector using the new motion vector
         # TODO
 
         # Get the current orientation vector
-        # fuse.update_nomag(imu.accel.xyz, imu.gyro.xyz)
+        fuse.update_nomag(imu.accel.xyz, imu.gyro.xyz)
 
         # Calculate the difference between the two orientation vectors
         # TODO
@@ -200,10 +219,10 @@ while True:
         # Update the command torque vector for each axis where hold = True
         # TODO
         # FIXME! Need to capture IMU measured values as well as the target vectors
-        # current_motion = motion.action_motion(0, 0, 0,
-        #                                       correction(fuse.pitch),
-        #                                       correction(fuse.roll),
-        #                                       correction(fuse.heading))
+        current_motion = motion.action_motion(0, 0, 0,
+                                              correction(fuse.pitch),
+                                              correction(fuse.roll),
+                                              correction(fuse.heading))
 
         # Map the translation and torque vector into individual motor powers
         motor_values = current_motion.map_to_motors()
@@ -214,12 +233,9 @@ while True:
         current_state_string = current_state_string[:-1] + "," + current_status_string[1:]
 
         if (mem32[SIE_STATUS] & (CONNECTED | SUSPENDED)) == CONNECTED:
-            # print(current_state_string)
             current_status.farpi_link = True
         else:
             current_status.farpi_link = False
-
-        # print(current_status_string)
 
         # Update the digital outputs
         # TODO
@@ -227,10 +243,7 @@ while True:
         last_update = time.ticks_ms()
         count += 1
 
-        # display.refresh(current_status)
-
-        # Motor test
-        # [motor.send(1999) for motor in output]
+        display.refresh(current_status)
 
         # Once a second loop
         if count % 50 == 0:

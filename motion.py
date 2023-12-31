@@ -36,8 +36,9 @@ class MotionState:
         self.actual_roll: float = 0.0
         self.actual_yaw: float = 0.0
 
-        # Static action list
-        self.actions = ["action_motion", ]
+        # Motor mapping constants
+        self.motor_scale = 1000
+        self.motor_offset = 1048
 
     def map_to_motors(self):
         # Motors mapped clockwise from top right
@@ -78,16 +79,16 @@ class MotionState:
                   + (-1.0 * self.pitch) + (1.0 * self.roll) + (0.0 * self.yaw))
 
         # Map the motor values to values the hardware understands
-        # For servos, this is 0.0 - 1.0, with 0.5 being neutral
 
-        return [motor1 * 0.5 + 0.5,
-                motor2 * 0.5 + 0.5,
-                motor3 * 0.5 + 0.5,
-                motor4 * 0.5 + 0.5,
-                motor5 * 0.5 + 0.5,
-                motor6 * 0.5 + 0.5,
-                motor7 * 0.5 + 0.5,
-                motor8 * 0.5 + 0.5]
+        return [self.motor_scale * motor1 + self.motor_offset,
+                self.motor_scale * motor2 + self.motor_offset,
+                self.motor_scale * motor3 + self.motor_offset,
+                self.motor_scale * motor4 + self.motor_offset,
+                self.motor_scale * motor5 + self.motor_offset,
+                self.motor_scale * motor6 + self.motor_offset,
+                self.motor_scale * motor7 + self.motor_offset,
+                self.motor_scale * motor8 + self.motor_offset
+                ]
 
 
 # Create a new motion packet from parameters. Called when a FarPi action is received
