@@ -39,13 +39,17 @@ from display import StatusDisplay
 # 28 Digital output - ODroid power
 # 29 Digital output - lighting
 
+# NOTE FOR I2C WIRING:
+# SCL == BLUE
+# SDA == ORANGE
+
 # ----------------------------------------------------------------------------------------------------------------------
 # Configure peripherals
 # ----------------------------------------------------------------------------------------------------------------------
 
 # IMU
-i2c0 = I2C(0, scl=Pin(13), sda=Pin(12), freq=400000)
-imu = MPU9250(i2c0)
+# i2c0 = I2C(0, scl=Pin(13), sda=Pin(12), freq=400000)
+# imu = MPU9250(i2c0)
 fuse = Fusion()
 
 # Display
@@ -154,6 +158,11 @@ def correction(orientation):
     return round(delta, 2)
 
 
+def send(data):
+    if comms_active:
+        sys.stdout.write(data)
+
+
 current_status = status.Status()
 
 
@@ -201,7 +210,7 @@ while True:
         # current_status.status = command_input
 
     # if time.ticks_diff(time.ticks_ms(), last_update) > 1:
-    [motor.send(motor_value) for motor in output]
+    # [motor.send(motor_value) for motor in output]
 
     # Refresh outputs at 50Hz to match standard servo PWM frequency
     if time.ticks_diff(time.ticks_ms(), last_update) > update_period:
@@ -211,7 +220,7 @@ while True:
         # TODO
 
         # Get the current orientation vector
-        fuse.update_nomag(imu.accel.xyz, imu.gyro.xyz)
+        # fuse.update_nomag(imu.accel.xyz, imu.gyro.xyz)
 
         # Calculate the difference between the two orientation vectors
         # TODO
